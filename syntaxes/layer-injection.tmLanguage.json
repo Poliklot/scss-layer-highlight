@@ -1,0 +1,30 @@
+{
+  "scopeName": "scss.layer.injection",
+  "injectionSelector": "L:source.css.scss",
+  "patterns": [{ "include": "#layerPrelude" }],
+  "repository": {
+    "layerPrelude": {
+      "begin": "(?i)(@layer)\\b",
+      "beginCaptures": {
+        "1": { "name": "keyword.control.at-rule.layer.css" }
+      },
+      "end": "(?=\\{|;)",
+      "patterns": [{ "include": "#layerNameList" }]
+    },
+    "layerNameList": {
+      "patterns": [
+        { "include": "#layerName" },
+        { "name": "punctuation.separator.comma.css", "match": "," }
+      ]
+    },
+    "layerName": {
+      "patterns": [
+        {
+          "name": "entity.name.type.css",
+          "match": "(?x)(?:-?[_a-zA-Z][\\w-]*)(?:\\.(?:-?[_a-zA-Z][\\w-]*))*"
+        },
+        { "name": "punctuation.separator.period.css", "match": "\\." }
+      ]
+    }
+  }
+}

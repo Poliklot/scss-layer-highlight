@@ -1,0 +1,56 @@
+{
+  "name": "scss-layer-highlight",
+  "displayName": "SCSS @layer Highlight",
+  "description": "Highlights CSS Cascade Layers (@layer) in SCSS and adds a hover tooltip with examples.",
+  "version": "0.0.1",
+  "publisher": "poliklot",
+  "publisherDisplayName": "poliklot",
+  "author": {
+    "name": "poliklot"
+  },
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "homepage": "https://github.com/poliklot/scss-layer-highlight",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/poliklot/scss-layer-highlight.git"
+  },
+  "bugs": {
+    "url": "https://github.com/poliklot/scss-layer-highlight/issues"
+  },
+  "engines": {
+    "vscode": "^1.101.0"
+  },
+  "categories": ["Programming Languages"],
+  "keywords": ["scss", "css", "layer", "cascade layers", "highlight", "textmate", "grammar"],
+  "galleryBanner": {
+    "color": "#1f1f1f",
+    "theme": "dark"
+  },
+  "main": "./extension.js",
+  "activationEvents": ["onLanguage:scss", "onLanguage:css"],
+  "contributes": {
+    "grammars": [
+      {
+        "scopeName": "scss.layer.injection",
+        "path": "./syntaxes/layer-injection.tmLanguage.json",
+        "injectTo": ["source.css.scss"]
+      }
+    ]
+  },
+  "files": [
+    "extension.js",
+    "syntaxes/**",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "assets/icon.png"
+  ],
+  "scripts": {
+    "package": "vsce package",
+    "publish": "vsce publish"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.0.0"
+  }
+}
