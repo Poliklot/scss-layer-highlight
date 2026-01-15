@@ -2,7 +2,7 @@
   "name": "scss-layer-highlight",
   "displayName": "SCSS @layer Highlight",
   "description": "Highlights CSS Cascade Layers (@layer) in SCSS and adds a hover tooltip with examples.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "poliklot",
   "publisherDisplayName": "poliklot",
   "author": {

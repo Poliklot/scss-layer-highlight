@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.0.2] - 2026-01-15
+
+### Fixed
+- Prevented false positives when detecting `@layer ...;` order declarations inside comments (`/* ... */` and `// ...`).
+  The workspace scanner now strips comments (preserving offsets) before parsing, so hover order info is derived only from real code.
+
 ## [0.0.1] - 2026-01-12
 
 ### Added

@@ -50,34 +50,23 @@ function formatDeclaredOrderBold(order, highlightName) {
   return `@layer ${parts.join(", ")};`;
 }
 
-/** ---------- Workspace order cache (stable APIs only) ---------- */
-
-const decoder = new TextDecoder("utf-8");
-
-// Candidates: multiple "@layer ...;" statements across workspace
-// We’ll pick the “best” one for a given layer name.
-let workspaceCandidates = []; // { order: string[], loc: { uri, line, char }, preview: string }
-let scanPromise = null;
-let scanTimer = null;
-
-function scheduleWorkspaceScan() {
-  if (scanTimer) clearTimeout(scanTimer);
-  scanTimer = setTimeout(() => {
-    scanPromise = scanWorkspaceForOrder().catch(() => {
-      // swallow errors; hover will just fallback
-    });
-  }, 200);
+/**
+ * Strip comments from SCSS/CSS while preserving string length (replace with spaces).
+ * This prevents matching "@layer ...;" inside comments.
+ */
+function stripComments(input) {
+  return input
+    // block comments /* ... */
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => " ".repeat(m.length))
+    // line comments // ... (SCSS). Keep the first char group (to avoid breaking URLs like http://)
+    .replace(/(^|[^:])\/\/.*$/gm, (m, g1) => (g1 ? g1 : "") + " ");
 }
 
-async function ensureWorkspaceScan() {
-  if (!scanPromise) {
-    scanPromise = scanWorkspaceForOrder().catch(() => {});
-  }
-  await scanPromise;
+function makePreview(statement) {
+  return statement.replace(/\s+/g, " ").trim().slice(0, 240);
 }
 
 function countLineChar(text, index) {
-  // Compute (line, char) from absolute index
   let line = 0;
   let lastNl = -1;
   for (let i = 0; i < index; i++) {
@@ -89,22 +78,41 @@ function countLineChar(text, index) {
   return { line, char: index - (lastNl + 1) };
 }
 
-function makePreview(statement) {
-  // Keep it readable & short
-  return statement
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 240);
+/** ---------- Workspace order cache (stable APIs only) ---------- */
+
+const decoder = new TextDecoder("utf-8");
+const validLayerName = /^-?[_a-zA-Z][\w-]*(?:\.-?[_a-zA-Z][\w-]*)*$/;
+
+let workspaceCandidates = []; // { order: string[], loc: { uri, line, char }, preview: string }
+let scanPromise = null;
+let scanTimer = null;
+
+function scheduleWorkspaceScan() {
+  if (scanTimer) clearTimeout(scanTimer);
+  scanTimer = setTimeout(() => {
+    scanPromise = scanWorkspaceForOrder().catch(() => {
+      // swallow errors; hover will fallback
+    });
+  }, 200);
+}
+
+async function ensureWorkspaceScan() {
+  if (!scanPromise) {
+    scanPromise = scanWorkspaceForOrder().catch(() => {});
+  }
+  await scanPromise;
 }
 
 async function scanWorkspaceForOrder() {
   workspaceCandidates = [];
 
-  // Scan common style files; exclude big folders
   const include = "**/*.{scss,css,sass}";
-  const exclude = "{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**,**/out/**,**/coverage/**}";
+  const exclude =
+    "{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/.next/**,**/out/**,**/coverage/**}";
+
   const uris = await vscode.workspace.findFiles(include, exclude, 2000);
 
+  // Find "@layer <list> ;" but NOT "@layer <...> {"
   const re = /@layer\s+([^;{]+);/gi;
 
   for (const uri of uris) {
@@ -115,29 +123,34 @@ async function scanWorkspaceForOrder() {
       continue;
     }
 
-    // Skip huge files (e.g. generated)
+    // Skip huge files (generated)
     if (bytes.byteLength > 1_500_000) continue;
 
-    const text = decoder.decode(bytes);
+    const rawText = decoder.decode(bytes);
+    const text = stripComments(rawText);
 
     let m;
     re.lastIndex = 0;
     while ((m = re.exec(text))) {
       const listPart = m[1];
-      const names = parseLayerList(listPart);
+
+      const names = parseLayerList(listPart).filter((n) => validLayerName.test(n));
       if (!names.length) continue;
 
-      // Normalize order: keep first occurrence of each name
+      // Keep first occurrence of each name
       const order = [];
       for (const n of names) if (!order.includes(n)) order.push(n);
 
-      const statement = m[0];
-      const pos = countLineChar(text, m.index);
+      const statementLen = m[0].length;
+      const pos = countLineChar(rawText, m.index);
+
+      // Preview from original text (same indexes because we preserved length via spaces)
+      const rawStatement = rawText.slice(m.index, m.index + statementLen);
 
       workspaceCandidates.push({
         order,
         loc: { uri, line: pos.line, char: pos.char },
-        preview: makePreview(statement)
+        preview: makePreview(rawStatement)
       });
     }
   }
@@ -146,14 +159,14 @@ async function scanWorkspaceForOrder() {
 function pickBestCandidateForLayer(layerName) {
   if (!workspaceCandidates.length) return null;
 
-  // Prefer candidates that explicitly contain the hovered layer.
+  // Prefer candidates that include the hovered layer, pick the largest list.
   const containing = workspaceCandidates
     .filter((c) => c.order.includes(layerName))
     .sort((a, b) => b.order.length - a.order.length);
 
   if (containing.length) return containing[0];
 
-  // Otherwise fallback to the “largest” order statement in workspace
+  // Otherwise pick the largest in workspace
   const sorted = [...workspaceCandidates].sort((a, b) => b.order.length - a.order.length);
   return sorted[0] || null;
 }
@@ -221,7 +234,6 @@ function makeLayerNameHover(name, candidate, localFallbackOrder) {
     md.appendMarkdown("**Declared order:**\n\n");
     md.appendMarkdown(`${formatDeclaredOrderBold(order, name)}\n\n`);
 
-    // Jump link + preview
     if (candidate) {
       const link = makeOpenDeclarationLink(candidate);
       if (link) {
@@ -292,17 +304,13 @@ function activate(context) {
         );
         if (!hit) return;
 
-        // Ensure workspace scan finished (first hover after launch)
         await ensureWorkspaceScan();
 
         const candidate = pickBestCandidateForLayer(hit.name);
         const fallbackOrder = localNames.map((n) => n.name);
         const range = new vscode.Range(position.line, hit.start, position.line, hit.end);
 
-        return new vscode.Hover(
-          makeLayerNameHover(hit.name, candidate, fallbackOrder),
-          range
-        );
+        return new vscode.Hover(makeLayerNameHover(hit.name, candidate, fallbackOrder), range);
       }
     }
   );
